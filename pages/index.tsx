@@ -56,14 +56,16 @@ export default function App() {
     undefined
   );
 
-  const [walletKey, setWalletKey] = useState<PhantomProvider | undefined>(
-    undefined
-  );
+  // const [walletKey, setWalletKey] = useState<PhantomProvider | undefined>(
+  //   undefined
+  // );
 
   const [newKeyPair, setNewKeypair] = useState<Keypair | undefined>(undefined);
   const [newWalletBalance, setNewWalletBalance] = useState<number | undefined>(undefined);
   const [newTransactionSignature, setNewTransactionSignature] = useState<string | undefined>(undefined);
-  const [connection,setConnection] = useState<Connection | undefined>(undefined);
+  const [connection, setConnection] = useState<Connection | undefined>(undefined);
+  const [phantomWallet, setPhantomWallet] = useState<Keypair | undefined>(undefined);
+  const [loading, setLoading] = useState<boolean>(false);
 
   useEffect(() => {
     const provider = getProvider();
@@ -79,9 +81,12 @@ export default function App() {
 
     if (solana) {
       try {
+        setLoading(true);
         const response = await solana.connect();
+        setPhantomWallet(response)
         console.log('wallet account ', response.publicKey.toString());
-        setWalletKey(response.publicKey.toString());
+        setLoading(false);
+        // setWalletKey(response.publicKey.toString());
       } catch (err: any) {
         console.log(err.message);
       }
@@ -89,10 +94,12 @@ export default function App() {
   };
 
   const disconnectWallet = async () => {
-    if (provider && walletKey) {
+    // if (provider && walletKey) {
+    if (provider && phantomWallet) {
       try {
         await provider.disconnect();
-        await setWalletKey(undefined);
+        await setPhantomWallet(undefined);
+        // await setWalletKey(undefined);
       } catch (err: any) {
         console.log(err.message);
       }
@@ -100,19 +107,21 @@ export default function App() {
   }
 
   const createAccount = async () => {
-    if(!connection) return;
+    if (!connection) return;
+    setLoading(true);
     const newPair = new Keypair();
     console.log("Keypair", newPair);
     setNewKeypair(newPair);
-    const publicKey = new PublicKey(newPair.publicKey).toString();
-    const privateKey = newPair.secretKey;
+
+    // const publicKey = new PublicKey(newPair.publicKey).toString();
+    // const privateKey = newPair.secretKey;
     let walletBalance = await connection.getBalance(
       new PublicKey(newPair.publicKey)
     );
     setNewWalletBalance(walletBalance / LAMPORTS_PER_SOL);
 
     console.log("Airdroping SOL...")
-    const fromAirDropSignature = await connection.requestAirdrop(
+    let fromAirDropSignature = await connection.requestAirdrop(
       new PublicKey(newPair.publicKey),
       2 * LAMPORTS_PER_SOL
     );
@@ -122,20 +131,34 @@ export default function App() {
       new PublicKey(newPair.publicKey)
     );
     setNewWalletBalance(walletBalance / LAMPORTS_PER_SOL)
+    setTimeout(async () => {
+      fromAirDropSignature = await connection.requestAirdrop(
+        new PublicKey(newPair.publicKey),
+        2 * LAMPORTS_PER_SOL
+      );
+      await connection.confirmTransaction(fromAirDropSignature);
+      console.log("Airdrop complete!")
+      walletBalance = await connection.getBalance(
+        new PublicKey(newPair.publicKey)
+      );
+      setNewWalletBalance(walletBalance / LAMPORTS_PER_SOL)
+      setLoading(false);
+    }, 10000);
+
   }
 
   const transferSol = async () => {
-    if(!connection) return;
+    if (!connection) return;
     if (!newKeyPair) return;
+    if (!phantomWallet) return;
 
-    var toWallet = Keypair.generate();
-
+    setLoading(true);
     // Add transfer instruction to transaction
     var transaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: newKeyPair.publicKey,
-        toPubkey: toWallet.publicKey,
-        lamports: LAMPORTS_PER_SOL
+        toPubkey: phantomWallet.publicKey,
+        lamports: 2 * LAMPORTS_PER_SOL
       }),
     );
 
@@ -145,6 +168,7 @@ export default function App() {
     ]);
     console.log('SIGNATURE', signature);
     setNewTransactionSignature(signature)
+    setLoading(false);
   }
 
   // HTML code for the app
@@ -168,8 +192,9 @@ export default function App() {
           <p>{`New account balance: ${newWalletBalance}`}</p>
         </div>)
         }
+        {loading && <h1>Loading....</h1>}
         <h2>Connect to Phantom Wallet</h2>
-        {provider && !walletKey && (
+        {provider && !phantomWallet && (
           <button
             style={{
               fontSize: "16px",
@@ -182,8 +207,8 @@ export default function App() {
             Connect Wallet
           </button>
         )}
-        {provider && walletKey && <p>{`Connected account: ${walletKey}`}</p>}
-        {provider && walletKey && (
+        {provider && phantomWallet && <p>{`Connected account: ${phantomWallet.publicKey}`}</p>}
+        {provider && phantomWallet && (
           <button
             style={{
               fontSize: "16px",
